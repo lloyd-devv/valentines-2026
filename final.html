@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Glowing Valentine</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@900&display=swap" rel="stylesheet">
+
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Poppins', sans-serif; }
+        
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.92); z-index: 100;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            color: white; text-align: center;
+        }
+        button {
+            padding: 15px 50px; font-size: 18px; font-weight: bold; margin-top: 25px;
+            background: linear-gradient(90deg, #ff0055, #ff00aa); 
+            color: white; border: none; border-radius: 50px;
+            cursor: pointer; box-shadow: 0 0 40px rgba(255, 0, 85, 0.9);
+            transition: transform 0.2s; font-family: 'Poppins', sans-serif;
+        }
+        button:hover { transform: scale(1.1); }
+
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px; color: white;
+            z-index: 10; pointer-events: none; 
+            /* Teks UI juga dibuat glowing */
+            text-shadow: 0 0 15px rgba(255, 100, 150, 0.8), 0 0 30px rgba(255, 100, 150, 0.5);
+        }
+        h1 { margin: 0; font-size: 26px; color: #fff; text-transform: uppercase; letter-spacing: 2px;}
+        .instruction { font-size: 14px; color: #eee; margin-top: 8px; line-height: 1.8;}
+
+        #cam-preview {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 160px; height: 120px; transform: scaleX(-1);
+            border: 2px solid #ff00aa; opacity: 0.7; border-radius: 12px;
+            box-shadow: 0 0 20px rgba(255,0,170,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <h2>✨ FOR YOU INTAN NIRMALASARI</h2>
+        <p style="color:#ccc; max-width: 500px; font-size: 14px; line-height: 1.6;">
+            .<br>
+            .<br>
+            by: Lloyd-dev.
+        </p>
+        <button id="btn-start">NYALAKAN SISTEM</button>
+    </div>
+
+    <div id="ui-layer">
+        <h1 id="status-text">System Ready</h1>
+        <div class="instruction">
+            🖐️ Buka Tangan <b></b><br>
+            🤘 Rock <b></b><br>
+            ✌️ Peace <b></b>
+        </div>
+    </div>
+
+    <video id="cam-preview" playsinline autoplay></video>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        // --- 1. SETUP THREE.JS ---
+        const scene = new THREE.Scene();
+        // Fog Hitam Pekat untuk kontras cahaya
+        scene.fog = new THREE.FogExp2(0x000000, 0.012);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 2000);
+        // PERBAIKAN 1: Kamera Mundur Sangat Jauh (100) agar teks raksasa muat
+        camera.position.z = 100; 
+
+        const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. TEKSTUR PARTIKEL "SUPER GLOW" (MEMANCAR) ---
+        function createSuperGlowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128; // Texture resolusi lebih tinggi
+            const ctx = canvas.getContext('2d');
+            
+            // Gradasi Kompleks untuk efek memancar
+            const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');     // Inti Putih Panas
+            gradient.addColorStop(0.15, 'rgba(255, 240, 200, 0.9)'); // Halo Kuning Hangat
+            gradient.addColorStop(0.4, 'rgba(100, 200, 255, 0.4)');  // Pancaran Biru Dingin
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');            // Transparan
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0,0,128,128);
+            
+            // Tambahkan titik inti yang tajam
+            ctx.beginPath();
+            ctx.arc(64,64, 8, 0, Math.PI*2);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fill();
+
+            const tex = new THREE.Texture(canvas);
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        // --- 3. PARTICLE SYSTEM ---
+        const COUNT = 6500; // Partikel lebih banyak lagi
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(COUNT * 3);
+        const targetPositions = new Float32Array(COUNT * 3);
+        const randoms = new Float32Array(COUNT * 3);
+
+        for(let i=0; i<COUNT; i++) {
+            const i3 = i*3;
+            positions[i3] = (Math.random()-0.5) * 200;
+            positions[i3+1] = (Math.random()-0.5) * 200;
+            positions[i3+2] = (Math.random()-0.5) * 200;
+            targetPositions[i3] = positions[i3]; targetPositions[i3+1] = positions[i3+1]; targetPositions[i3+2] = positions[i3+2];
+            randoms[i3] = Math.random(); randoms[i3+1] = Math.random(); randoms[i3+2] = Math.random();
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            // PERBAIKAN 2: Ukuran Partikel Sangat Besar agar tumpukan cahayanya silau
+            size: 3.5, 
+            map: createSuperGlowTexture(),
+            transparent: true,
+            opacity: 1.0,
+            depthWrite: false,
+            // Kunci efek memancar: Additive Blending
+            blending: THREE.AdditiveBlending 
+        });
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- 4. GENERATOR TEKS (CANVAS RAKSASA 3000px) ---
+        function getStackedTextPoints(line1, line2, scaleFactor) {
+            // PERBAIKAN 3: Canvas Lebar 3000px. Dijamin muat.
+            const width = 3000; 
+            const height = 2000; 
+            
+            const c = document.createElement('canvas');
+            const ctx = c.getContext('2d');
+            c.width = width; c.height = height; 
+            
+            // Font disesuaikan (150px) agar proporsional di canvas raksasa
+            ctx.font = '900 150px "Poppins", sans-serif'; 
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center'; ctx.textBaseline='middle';
+            
+            // Jarak antar baris disesuaikan
+            ctx.fillText(line1, width/2, height/2 - 110);
+            ctx.fillText(line2, width/2, height/2 + 110);
+            
+            const data = ctx.getImageData(0,0,width,height).data;
+            const res = [];
+            
+            // Sampling step 5 (Optimasi untuk canvas raksasa)
+            for(let y=0; y<height; y+=5) {
+                for(let x=0; x<width; x+=5) {
+                    if(data[(y*width+x)*4+3] > 128) {
+                        res.push({
+                            x: (x - width/2) * scaleFactor, 
+                            y: -(y - height/2) * scaleFactor 
+                        });
+                    }
+                }
+            }
+            return res;
+        }
+
+        let shapeLove = [];
+        let shapeVal = [];
+
+        function initShapes() {
+            setTimeout(() => {
+                // Skala disesuaikan dengan kamera Z=100
+                shapeLove = getStackedTextPoints("I LOVE", "YOU", 0.15); 
+                shapeVal = getStackedTextPoints("HAPPY", "VALENTINE", 0.15);
+            }, 100);
+        }
+
+        // --- 5. LOGIKA CONTROL ---
+        let targetRotationX = 0; let targetRotationY = 0; let currentMode = 'idle';
+
+        function handleHand(landmarks) {
+            const handX = landmarks[9].x; const handY = landmarks[9].y; 
+            targetRotationY = (handX - 0.5) * 4; targetRotationX = (handY - 0.5) * 3; 
+
+            const y = (i) => landmarks[i].y; const isUp = (tip, pip) => y(tip) < y(pip);
+            const idx = isUp(8, 6), mid = isUp(12, 10), rng = isUp(16, 14), pnk = isUp(20, 18);
+
+            let newMode = 'idle';
+            if(idx && pnk && !mid && !rng) newMode = 'rock';
+            else if(idx && mid && !rng && !pnk) newMode = 'peace';
+            else if(idx && mid && rng && pnk) newMode = 'open';
+            else newMode = 'idle';
+
+            if(newMode !== currentMode) { currentMode = newMode; updateShape(currentMode); }
+        }
+
+        function updateShape(mode) {
+            const title = document.getElementById('status-text');
+            let pts = []; let color = new THREE.Color(0xffffff);
+
+            if(mode === 'rock') {
+                title.innerText = "❤️ I LOVE YOU"; title.style.color = "#ff0055";
+                color.setHex(0xff0055); pts = shapeLove;
+            } else if(mode === 'peace') {
+                title.innerText = "✌️ HAPPY VALENTINE"; title.style.color = "#ff69b4";
+                color.setHex(0xff69b4); pts = shapeVal;
+            } else if(mode === 'open') {
+                title.innerText = "💥 CHAOS EXPLOSION"; title.style.color = "#ffffff";
+                color.setHex(0xffffff); // Putih silau
+            } else {
+                title.innerText = "Glow Engine Ready"; title.style.color = "#00c6ff";
+                color.setHex(0x00c6ff); // Biru silau
+            }
+            
+            // Trik agar warna lebih "panas" (melebihi 1.0) saat ditumpuk
+            material.color.r = color.r * 1.5;
+            material.color.g = color.g * 1.5;
+            material.color.b = color.b * 1.5;
+
+            for(let i=0; i<COUNT; i++) {
+                const i3 = i*3;
+                if(mode === 'open') {
+                    // Ledakan Chaos (Spherical)
+                    const r = 50 + Math.random() * 250; 
+                    const theta = Math.random() * Math.PI * 2; const phi = Math.acos(2 * Math.random() - 1);
+                    targetPositions[i3] = r * Math.sin(phi) * Math.cos(theta);
+                    targetPositions[i3+1] = r * Math.sin(phi) * Math.sin(theta);
+                    targetPositions[i3+2] = r * Math.cos(phi);
+                } else if(pts.length > 0) {
+                    const p = pts[i % pts.length];
+                    targetPositions[i3] = p.x; targetPositions[i3+1] = p.y;
+                    targetPositions[i3+2] = (Math.random()-0.5) * 2.0; // Sedikit volume
+                } else {
+                    const r = 40; const theta = Math.random()*Math.PI*2; const phi = Math.acos(2*Math.random()-1);
+                    targetPositions[i3] = r * Math.sin(phi) * Math.cos(theta);
+                    targetPositions[i3+1] = r * Math.sin(phi) * Math.sin(theta);
+                    targetPositions[i3+2] = r * Math.cos(phi);
+                }
+            }
+        }
+
+        // --- 6. START SYSTEM ---
+        const startBtn = document.getElementById('btn-start');
+        const overlay = document.getElementById('overlay');
+        const videoElement = document.getElementById('cam-preview');
+
+        startBtn.addEventListener('click', () => {
+            startBtn.innerText = "LOADING...";
+            document.fonts.ready.then(() => {
+                initShapes(); 
+                const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+                hands.setOptions({maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5});
+                hands.onResults(res => {
+                    if(res.multiHandLandmarks.length>0) handleHand(res.multiHandLandmarks[0]);
+                    else { targetRotationX=0; targetRotationY=0; }
+                });
+                const cameraFeed = new Camera(videoElement, {
+                    onFrame: async () => { await hands.send({image: videoElement}); }, width: 320, height: 240
+                });
+                cameraFeed.start().then(() => overlay.style.display='none');
+            });
+        });
+
+        // --- 7. ANIMATE ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            for(let i=0; i<COUNT*3; i++) {
+                positions[i] += (targetPositions[i] - positions[i]) * 0.1;
+                positions[i] += Math.sin(time * 5 + randoms[i] * 10) * 0.03; // Getaran lebih kuat
+            }
+            geometry.attributes.position.needsUpdate = true;
+            particles.rotation.y += (targetRotationY - particles.rotation.y) * 0.1;
+            particles.rotation.x += (targetRotationX - particles.rotation.x) * 0.1;
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    </script>
+</body>
+</html>
